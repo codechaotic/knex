@@ -74,7 +74,6 @@ assign(Client_Redshift.prototype, {
         currentSchema: this.config.searchPath
       }
     };
-    console.log(config)
     return new JDBC(config);
   },
 
@@ -242,19 +241,32 @@ assign(Client_Redshift.prototype, {
                   rejecter(err);
                 } else {
                   resultset.toObjectIter(function(err, iterator) {
-                    let writable, next, rows = iterator.rows;
-                    let rs = new Readable({
-                      objectMode: true,
-                      highWaterMark: options.highWaterMark || 16,
-                      read( size ) {
-                        do {
-                          next = rows.next();
-                          writable = this.push(next.value);
-                          if ( next.done ) this.push(null);
-                        } while ( writable && ! next.done );
-                      }
-                    });
-                    rs.pipe(stream);
+                    if (err) {
+                      rejecter(err);
+                    } else {
+                      let rows = iterator.rows;
+                      let rs = new Readable({
+                        objectMode: true,
+                        highWaterMark: options.highWaterMark || 16,
+                        read( size ) {
+                          if ( this._busy ) return;
+                          this._busy = true;
+                          let readNext = function () {
+                              let next = rows.next();
+                              setImmediate(() => {
+                                let writable = rs.push(next.value);
+                                if ( writable && ! next.done ) setImmediate(readNext);
+                                else this._busy = false;
+                              })
+                              if ( next.done ) setImmediate(() => { rs.push(null);  })
+                          }
+                          readNext();
+                        }
+                      });
+                      rs._busy = false;
+                      rs.pipe(stream);
+                      resolver(rs);
+                    }
                   });
                 }
               });
@@ -276,7 +288,6 @@ assign(Client_Redshift.prototype, {
         if (err) {
           rejecter(err);
         } else {
-          console.log(obj.bindings)
           // obj.bindings.forEach((binding, index) => {
           //   switch(typeof binding) {
           //     case 'string': statement.setString(index+1, function(err) {
