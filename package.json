@@ -12,6 +12,7 @@
     "generic-pool": "^2.4.2",
     "inherits": "~2.0.1",
     "interpret": "^0.6.5",
+    "jdbc": "^0.5.1",
     "liftoff": "~2.2.0",
     "lodash": "^4.6.0",
     "minimist": "~1.1.0",
