@@ -13,6 +13,7 @@ const aliases = {
   'mariadb' : 'maria',
   'mariasql' : 'maria',
   'pg' : 'postgres',
+  'rs' : 'redshift',
   'postgresql' : 'postgres',
   'sqlite' : 'sqlite3'
 };
