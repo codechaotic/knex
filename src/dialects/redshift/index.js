@@ -224,6 +224,7 @@ assign(Client_Redshift.prototype, {
   },
 
   _stream(connObj, obj, stream, options) {
+    let self = this;
     let sql = obj.sql = this.positionBindings(obj.sql);
     let batchSize = options.batchSize || 1000;
     var connection = connObj.conn;
@@ -236,6 +237,7 @@ assign(Client_Redshift.prototype, {
             if (err) {
               rejecter(err);
             } else {
+              self.createBindings(obj, statement);
               statement.executeQuery(function(err, resultset) {
                 if (err) {
                   rejecter(err);
@@ -280,24 +282,17 @@ assign(Client_Redshift.prototype, {
   // Runs the query on the specified connection, providing the bindings
   // and any other necessary prep work.
   _query(connObj, obj) {
+    let self = this;
     let sql = obj.sql = this.positionBindings(obj.sql);
     // obj.options ?
     var connection = connObj.conn;
+
     return new Promise(function(resolver, rejecter) {
       connection.prepareStatement(sql, function(err, statement) {
         if (err) {
           rejecter(err);
         } else {
-          // obj.bindings.forEach((binding, index) => {
-          //   switch(typeof binding) {
-          //     case 'string': statement.setString(index+1, function(err) {
-          //       if (err) { rejecter(err); }
-          //     }); break;
-          //     case 'number': statement.setLong(index+1, function(err) {
-          //       if (err) { rejecter(err); }
-          //     }); break;
-          //   }
-          // })
+          self.createBindings(obj, statement);
           statement.executeQuery(function(err, resultset) {
             if (err) {
               rejecter(err);
@@ -315,6 +310,35 @@ assign(Client_Redshift.prototype, {
         }
       });
     });
+  },
+
+  createBindings(obj, statement) {
+    if ( obj && obj.bindings ) {
+      obj.bindings.forEach((value, index) => {
+        let method;
+        switch(typeof value) {
+          case 'string':
+            method = statement.setString.bind(statement);
+          break;
+
+          case 'number':
+            if ( value % 1 === 0 ) method = statement.setLong.bind(statement);
+            if ( value % 1 !== 0 ) method = statement.setDecimal.bind(statement);
+          break;
+
+         case 'boolean':
+           method = statement.setBoolean.bind(statement);
+         break;
+
+         case 'object':
+           if ( value instanceof Date ) method = statement.setTimestamp.bind(statement);
+           if ( value instanceof Date ) method = statement.setTimestamp.bind(statement);
+         break;
+        }
+        if ( method ) method(index + 1, value, function(err) { if ( err ) { rejecter(err); } });
+        else throw new Error('Binding cannot be matched to an allowed type (string, number, boolean, or Date)')
+      });
+    }
   },
 
   // Ensures the response is returned in the same format as other clients.
