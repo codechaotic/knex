@@ -237,37 +237,42 @@ assign(Client_Redshift.prototype, {
             if (err) {
               rejecter(err);
             } else {
-              self.createBindings(obj, statement);
-              statement.executeQuery(function(err, resultset) {
+              self.createBindings(obj, statement, function(err) {
                 if (err) {
                   rejecter(err);
                 } else {
-                  resultset.toObjectIter(function(err, iterator) {
+                  statement.executeQuery(function(err, resultset) {
                     if (err) {
                       rejecter(err);
                     } else {
-                      let rows = iterator.rows;
-                      let rs = new Readable({
-                        objectMode: true,
-                        highWaterMark: options.highWaterMark || 16,
-                        read( size ) {
-                          if ( this._busy ) return;
-                          this._busy = true;
-                          let readNext = function () {
-                              let next = rows.next();
-                              setImmediate(() => {
-                                let writable = rs.push(next.value);
-                                if ( writable && ! next.done ) setImmediate(readNext);
-                                else this._busy = false;
-                              })
-                              if ( next.done ) setImmediate(() => { rs.push(null);  })
-                          }
-                          readNext();
+                      resultset.toObjectIter(function(err, iterator) {
+                        if (err) {
+                          rejecter(err);
+                        } else {
+                          let rows = iterator.rows;
+                          let rs = new Readable({
+                            objectMode: true,
+                            highWaterMark: options.highWaterMark || 16,
+                            read( size ) {
+                              if ( this._busy ) return;
+                              this._busy = true;
+                              let readNext = function () {
+                                  let next = rows.next();
+                                  setImmediate(() => {
+                                    let writable = rs.push(next.value);
+                                    if ( writable && ! next.done ) setImmediate(readNext);
+                                    else this._busy = false;
+                                  })
+                                  if ( next.done ) setImmediate(() => { rs.push(null);  })
+                              }
+                              readNext();
+                            }
+                          });
+                          rs._busy = false;
+                          rs.pipe(stream);
+                          resolver(rs);
                         }
                       });
-                      rs._busy = false;
-                      rs.pipe(stream);
-                      resolver(rs);
                     }
                   });
                 }
@@ -292,17 +297,22 @@ assign(Client_Redshift.prototype, {
         if (err) {
           rejecter(err);
         } else {
-          self.createBindings(obj, statement);
-          statement.executeQuery(function(err, resultset) {
+          self.createBindings(obj, statement, function(err) {
             if (err) {
               rejecter(err);
             } else {
-              resultset.toObjArray(function(err, results) {
+              statement.executeQuery(function(err, resultset) {
                 if (err) {
                   rejecter(err);
                 } else {
-                  obj.response = results;
-                  resolver(obj);
+                  resultset.toObjArray(function(err, results) {
+                    if (err) {
+                      rejecter(err);
+                    } else {
+                      obj.response = results;
+                      resolver(obj);
+                    }
+                  });
                 }
               });
             }
@@ -312,8 +322,9 @@ assign(Client_Redshift.prototype, {
     });
   },
 
-  createBindings(obj, statement) {
+  createBindings(obj, statement, callback) {
     if ( obj && obj.bindings ) {
+      let pending = 0, done = false;
       obj.bindings.forEach((value, index) => {
         let method;
         switch(typeof value) {
@@ -335,8 +346,16 @@ assign(Client_Redshift.prototype, {
            if ( value instanceof Date ) method = statement.setTimestamp.bind(statement);
          break;
         }
-        if ( method ) method(index + 1, value, function(err) { if ( err ) { rejecter(err); } });
-        else throw new Error('Binding cannot be matched to an allowed type (string, number, boolean, or Date)')
+        if ( method ) {
+          pending++;
+          method(index + 1, value, function(err) {
+            pending--;
+            if ( err && ! done ) { callback(err); }
+            else if ( ! pending && ! done ) callback();
+          });
+        } else {
+          throw new Error('Binding cannot be matched to an allowed type (string, number, boolean, or Date)');
+        }
       });
     }
   },
