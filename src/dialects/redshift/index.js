@@ -289,9 +289,7 @@ assign(Client_Redshift.prototype, {
   _query(connObj, obj) {
     let self = this;
     let sql = obj.sql = this.positionBindings(obj.sql);
-    // obj.options ?
     var connection = connObj.conn;
-
     return new Promise(function(resolver, rejecter) {
       connection.prepareStatement(sql, function(err, statement) {
         if (err) {
@@ -323,7 +321,7 @@ assign(Client_Redshift.prototype, {
   },
 
   createBindings(obj, statement, callback) {
-    if ( obj && obj.bindings ) {
+    if ( obj && obj.bindings && obj.bindings.length > 0 ) {
       let pending = 0, done = false;
       obj.bindings.forEach((value, index) => {
         let method;
@@ -357,7 +355,7 @@ assign(Client_Redshift.prototype, {
           throw new Error('Binding cannot be matched to an allowed type (string, number, boolean, or Date)');
         }
       });
-    }
+    } else callback();
   },
 
   // Ensures the response is returned in the same format as other clients.
