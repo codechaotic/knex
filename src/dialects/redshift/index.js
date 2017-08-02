@@ -254,14 +254,14 @@ assign(Client_Redshift.prototype, {
                             objectMode: true,
                             highWaterMark: options.highWaterMark || 16,
                             read( size ) {
-                              if ( this._busy ) return;
-                              this._busy = true;
-                              let readNext = function () {
+                              if ( rs._busy ) return;
+                              rs._busy = true;
+                              let readNext = () => {
                                   let next = rows.next();
                                   setImmediate(() => {
                                     let writable = rs.push(next.value);
                                     if ( writable && ! next.done ) setImmediate(readNext);
-                                    else this._busy = false;
+                                    else rs._busy = false;
                                   })
                                   if ( next.done ) setImmediate(() => { rs.push(null);  })
                               }
